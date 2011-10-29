@@ -44,7 +44,7 @@ package {
 			// creating the primitive using engine-specific proxy
 			var primitive:Primitive = new Primitive (new UniformSphere (50, 50));
 
-			primitive.style.set (LightingStyle.LIGHT_ENABLED, true);
+			primitive.style.set (LightingStyle.LIGHTS_ENABLED, true);
 			container.addChild (LoaderGroup.loadClass (Checkerboard) [0]).addChild (primitive);
 
 			addEventListener (Event.ENTER_FRAME, onEnterFrame);

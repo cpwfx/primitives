@@ -81,15 +81,15 @@ package com.ideaskill.primitives {
 					var vH:uint = getVertex (latH, lonH, R);
 
 					// create /\ faces
-					indices.push (vA, vB, vD);
-					indices.push (vF, vE, vH);
+					indices.push (vB, vA, vD);
+					indices.push (vE, vF, vH);
 
 					// create \/ faces (uses C and G vertices)
 					if (i < M - 1) {
 						var vC:uint = getVertex (latC, lonC, R);
 						var vG:uint = getVertex (latG, lonG, R);
-						indices.push (vD, vB, vC);
-						indices.push (vF, vH, vG);
+						indices.push (vB, vD, vC);
+						indices.push (vH, vF, vG);
 					}
 				}
 
@@ -118,7 +118,7 @@ package com.ideaskill.primitives {
 				vertexNormals [a3 + 2] = nz;
 
 				var longitude:Number = 2 * Math.PI * uvs [a * 2];
-				vertexTangents [a3] =     +Math.sin (longitude);
+				vertexTangents [a3] =     -Math.sin (longitude);
 				vertexTangents [a3 + 1] = -Math.cos (longitude);
 				vertexTangents [a3 + 2] = 0;
 			}
@@ -132,7 +132,7 @@ package com.ideaskill.primitives {
 			// azimuthal angle
 			var the:Number = +(180 - lon) * 0.01745329252;
 			// translate into XYZ coordinates
-			var wx:Number = rad * Math.sin (the) * Math.sin (phi);
+			var wx:Number = rad * Math.sin (the) * Math.sin (phi) * -1;
 			var wy:Number = rad * Math.cos (the) * Math.sin (phi);
 			var wz:Number = rad * Math.cos (phi) * -1;
 			// equirectangular projection

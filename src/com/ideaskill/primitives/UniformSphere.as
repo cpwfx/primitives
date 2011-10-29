@@ -30,7 +30,7 @@ package com.ideaskill.primitives {
 				var theta:Number = Math.sqrt (N * Math.PI) * phi;
 
 				var r:Number = Math.sin (phi);
-				vertexNormals [j++] = +r * Math.sin (theta);
+				vertexNormals [j++] = -r * Math.sin (theta);
 				vertexNormals [j++] = -r * Math.cos (theta);
 				vertexNormals [j++] = -1 * Math.cos (phi);
 			}
@@ -44,10 +44,10 @@ package com.ideaskill.primitives {
 			// create faces
 			if (N == 4) {
 				// patch the bug for N = 4 with Rakhmanov formula (TODO fix)
-				indices.push (1, 0, 2, 2, 0, 3, 3, 0, 1, 2, 3, 1);
+				indices.push (0, 1, 2, 0, 2, 3, 0, 3, 1, 3, 2, 1);
 
 			} else {
-				indices.push (1, 0, 2);
+				indices.push (0, 1, 2);
 
 				var lastEdgeA:int = 0;
 				var lastEdgeB:int = 2;
@@ -91,20 +91,20 @@ package com.ideaskill.primitives {
 
 					if (canIncA) {
 						// add face A-B-A1
-						indices.push (lastEdgeB, lastEdgeA, lastEdgeA + 1);
+						indices.push (lastEdgeA, lastEdgeB, lastEdgeA + 1);
 
 						// inc A
 						lastEdgeA++;
 					} else {
 						// add face A-B-B1
-						indices.push (lastEdgeB, lastEdgeA, lastEdgeB + 1);
+						indices.push (lastEdgeA, lastEdgeB, lastEdgeB + 1);
 
 						// inc B
 						lastEdgeB++;
 					}
 				}
 
-				indices.push (N - 2, N - 1, N - 3);
+				indices.push (N - 1, N - 2, N - 3);
 			}
 
 			// basic UVs
@@ -114,7 +114,7 @@ package com.ideaskill.primitives {
 				var y:Number = vertices [i++];
 				var z:Number = vertices [i++];
 				r = 1e-5 + Math.sqrt (x * x + y * y);
-				uvs [j++] = (Math.atan2 (y, x) / Math.PI + 1) * 0.5;
+				uvs [j++] = (Math.atan2 (y, -x) / Math.PI + 1) * 0.5;
 				uvs [j++] = Math.atan2 (r, z) / Math.PI;
 			}
 
@@ -142,8 +142,8 @@ package com.ideaskill.primitives {
 					}
 				} else {
 					// (approximate) direction of U change
-					var ux:Number = vertexNormals [a3 + 1] + vertexNormals [b3 + 1] + vertexNormals [c3 + 1];
-					var uy:Number = - (vertexNormals [a3] + vertexNormals [b3] + vertexNormals [c3]);
+					var ux:Number = - (vertexNormals [a3 + 1] + vertexNormals [b3 + 1] + vertexNormals [c3 + 1]);
+					var uy:Number = + (vertexNormals [a3] + vertexNormals [b3] + vertexNormals [c3]);
 
 					vA.z = 0;
 					vA.x = vertices [a3]; vA.y = vertices [a3 + 1]; vA.normalize ();
@@ -202,7 +202,7 @@ package com.ideaskill.primitives {
 			for (a = 0; a < len; a++) {
 				a2 = a * 2; a3 = a2 + a;
 				var longitude:Number = 2 * Math.PI * uvs [a2];
-				vertexTangents [a3] =     +Math.sin (longitude);
+				vertexTangents [a3] =     -Math.sin (longitude);
 				vertexTangents [a3 + 1] = -Math.cos (longitude);
 				vertexTangents [a3 + 2] = 0;
 			}

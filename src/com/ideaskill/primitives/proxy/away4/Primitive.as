@@ -7,10 +7,6 @@ package com.ideaskill.primitives.proxy.away4 {
 	public class Primitive extends Mesh {
 
 		public function Primitive (data:MeshData) {
-
-			// data needs to be mirrored for away
-			data.mirrored = true;
-
 			var g:Geometry = new Geometry;
 			var s:SubGeometry = new SubGeometry;
 			g.addSubGeometry (s);

@@ -14,10 +14,7 @@ package com.ideaskill.primitives.proxy.minko {
 
 		public function Primitive (data:MeshData) {
 
-			// data needs to be mirrored for away
-			data.mirrored = true;
-
-			// however, minko also expects indices in different order
+			// minko expects indices in different order
 			style.set (BasicStyle.TRIANGLE_CULLING, TriangleCulling.FRONT);
 			style.set (BasicStyle.NORMAL_MULTIPLIER, 1);
 
