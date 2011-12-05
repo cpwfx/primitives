@@ -47,13 +47,17 @@ package {
 
 			// trying csg stuff
 			var md1:UniformSphere = new UniformSphere (50, 50);
-			var md2:UniformSphere = new UniformSphere (25, 25);
+			var md2:UniformSphere = new UniformSphere (50, 50);
+			var md3:UniformSphere = new UniformSphere (20, 20);
 			var trans:Matrix3D = new Matrix3D;
-			trans.appendTranslation (0, 0, 50);
+			trans.appendTranslation (0, 0, 15);
 			transformMesh (md2, trans);
+			trans.appendTranslation (50, 0, -15);
+			transformMesh (md3, trans);
 			var csg1:CSG = new CSG (md1);
 			var csg2:CSG = new CSG (md2);
-			var primitive:Primitive = new Primitive (csg1.subtract (csg2).toMesh ());
+			var csg3:CSG = new CSG (md3);
+			var primitive:Primitive = new Primitive (csg1.subtract (csg2).union (csg3).toMesh ());
 
 			primitive.material = texture;
 			container.addChild (primitive);

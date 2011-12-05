@@ -68,13 +68,8 @@ package com.ideaskill.primitives.csg {
 							index = mesh.vertices.length / 3;
 							mesh.vertices.push (v.x, v.y, v.z);
 							mesh.uvs.push (v.u, v.v);
-							if (v.f) {
-								mesh.vertexNormals.push (-v.nx, -v.ny, -v.nz);
-								mesh.vertexTangents.push (-v.tx, -v.ty, -v.tz);
-							} else {
-								mesh.vertexNormals.push (v.nx, v.ny, v.nz);
-								mesh.vertexTangents.push (v.tx, v.ty, v.tz);
-							}
+							mesh.vertexNormals.push (v.nx, v.ny, v.nz);
+							mesh.vertexTangents.push (v.tx, v.ty, v.tz);
 						}
 						mesh.indices.push (index);
 						if (unchanged) {
@@ -205,12 +200,10 @@ class Vertex {
 		lerp (this.u, this.v, 0, other.u, other.v, 0, t);
 		v.u = lx; v.v = ly;
 
-		var k:Number = this.f ? -1 : 1, m:Number = other.f ? -1 : 1;
-
-		slerp (this.nx * k, this.ny * k, this.nz * k, other.nx * m, other.ny * m, other.nz * m, t);
+		slerp (this.nx, this.ny, this.nz, other.nx, other.ny, other.nz, t);
 		v.nx = sx; v.ny = sy; v.nz = sz;
 
-		slerp (this.tx * k, this.ty * k, this.tz * k, other.tx * m, other.ty * m, other.tz * m, t);
+		slerp (this.tx, this.ty, this.tz, other.tx, other.ty, other.tz, t);
 		v.tx = sx; v.ty = sy; v.tz = sz;
 
 		// orthogonalize t to n
@@ -235,6 +228,8 @@ class Vertex {
 	public function flip ():Vertex {
 		var c:Vertex = clone ();
 		c.f = !f;
+		c.nx = -nx; c.ny = -ny; c.nz = -nz;
+		c.tx = -tx; c.ty = -ty; c.tz = -tz;
 		return c;
 	}
 
@@ -263,6 +258,16 @@ class Vertex {
 	private var sz:Number;
 	private function slerp (x1:Number, y1:Number, z1:Number, x2:Number, y2:Number, z2:Number, t:Number):void {
 		var t1:Number = 1 - t;
+
+// hack until proper fix TODO
+L1 = Math.sqrt (x1 * x1 + y1 * y1 + z1 * z1);
+L2 = Math.sqrt (x2 * x2 + y2 * y2 + z2 * z2);
+Lt = t1 * L1 + t * L2;
+lerp (x1, y1, z1, x2, y2, z2, t);
+Lt /= Math.sqrt (lx * lx + ly * ly + lz * lz);
+sx = lx * Lt; sy = ly * Lt; sz = lz * Lt;
+return;
+
 
 		// projection plane
 		var ax:Number, ay:Number, az:Number, bx:Number, by:Number, bz:Number;
@@ -401,12 +406,12 @@ class Plane extends Vector3D {
 					var ti:int = types [i], tj:int = types [j];
 					vi = polygon.vertices [i]; var vj:Vertex = polygon.vertices [j];
 					if (ti != BACK) f.push (vi);
-					if (ti != FRONT) b.push (/*ti != BACK ? vi.clone() :*/ vi);
+					if (ti != FRONT) b.push ((ti != BACK) ? vi.clone() : vi);
 					if ((ti | tj) == SPANNING) {
 						t = (w - x * vi.x - y * vi.y - z * vi.z) / (x * (vj.x - vi.x) + y * (vj.y - vi.y) + z * (vj.z - vi.z));
 						var v:Vertex = vi.interpolate (vj, t);
 						f.push (v);
-						b.push (v/*.clone()*/);
+						b.push (v.clone());
 					}
 				}
 				if (f.length >= 3) front.push (new Polygon (f, polygon.shared));
