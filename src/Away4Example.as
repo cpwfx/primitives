@@ -2,10 +2,13 @@ package {
 	import away3d.containers.*;
 	import away3d.lights.*;
 	import away3d.materials.*;
+	import com.ideaskill.primitives.csg.CSG;
 	import com.ideaskill.primitives.proxy.away4.Primitive;
 	import com.ideaskill.primitives.UniformSphere;
+	import com.ideaskill.primitives.utils.transformMesh;
 	import flash.display.*;
 	import flash.events.*;
+	import flash.geom.Matrix3D;
 
 	public class Away4Example extends Sprite {
 
@@ -40,7 +43,17 @@ package {
 			texture.lights = [light1, light2];
 
 			// creating the primitive using engine-specific proxy
-			var primitive:Primitive = new Primitive (new UniformSphere (50, 50));
+//			var primitive:Primitive = new Primitive (new UniformSphere (50, 50));
+
+			// trying csg stuff
+			var md1:UniformSphere = new UniformSphere (50, 50);
+			var md2:UniformSphere = new UniformSphere (25, 25);
+			var trans:Matrix3D = new Matrix3D;
+			trans.appendTranslation (0, 0, 50);
+			transformMesh (md2, trans);
+			var csg1:CSG = new CSG (md1);
+			var csg2:CSG = new CSG (md2);
+			var primitive:Primitive = new Primitive (csg1.subtract (csg2).toMesh ());
 
 			primitive.material = texture;
 			container.addChild (primitive);
