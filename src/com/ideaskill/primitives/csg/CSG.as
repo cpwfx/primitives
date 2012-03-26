@@ -1,5 +1,7 @@
 package com.ideaskill.primitives.csg {
 	import com.ideaskill.primitives.MeshData;
+	import flash.geom.Vector3D;
+	import flash.utils.Dictionary;
 	/**
 	 * Constructive Solid Geometry (CSG).
 	 * 
@@ -12,10 +14,9 @@ package com.ideaskill.primitives.csg {
 	 */
 	public class CSG {
 
-		private var vlen:Vector.<int>;
 		private var root:Node;
 
-		private function meshToPolygons (mesh:MeshData, meshId:int):Vector.<Polygon> {
+		private function meshToPolygons (mesh:MeshData):Vector.<Polygon> {
 			var n:int = mesh.indices.length / 3;
 			var polygons:Vector.<Polygon> = new Vector.<Polygon> (n);
 			for (var i:int = 0; i < n; i++) {
@@ -23,7 +24,6 @@ package com.ideaskill.primitives.csg {
 				for (var j:int = 0; j < 3; j++) {
 					var v:Vertex = new Vertex;
 					var k:int = mesh.indices [i * 3 + j], k2:int = k + k, k3:int = k2 + k;
-					v.i = k;
 					v.x = mesh.vertices [k3];
 					v.y = mesh.vertices [k3 + 1];
 					v.z = mesh.vertices [k3 + 2];
@@ -37,47 +37,97 @@ package com.ideaskill.primitives.csg {
 					v.tz = mesh.vertexTangents [k3 + 2];
 					vertices [j] = v;
 				}
-				polygons [i] = new Polygon (vertices, meshId);
+				polygons [i] = new Polygon (vertices);
 			}
 			return polygons;
 		}
 
 		public function toMesh ():MeshData {
-			var vertexIndicesMap:Vector.<Vector.<int>> = new Vector.<Vector.<int>> (vlen.length);
-			for (var k:int = 0; k < vertexIndicesMap.length; k++) {
-				var vmap:Vector.<int> = new Vector.<int> (vlen [k]);
-				for (var q:int = 0; q < vmap.length; q++) vmap [q] = -1;
-				vertexIndicesMap [k]  = vmap;
-			}
-
-			var polygons:Vector.<Polygon> = root.allPolygons ();
-			var mesh:MeshData = new MeshData;
-			for (var i:int = 0, n:int = polygons.length; i < n; i++) {
-				var polygons3:Vector.<Polygon> = polygons [i].triangulate ();
-				for (var j:int = 0, m:int = polygons3.length; j < m; j++) {
-					var triangle:Polygon = polygons3 [j];
-					for (var w:int = 0; w < 3; w++) {
-						var v:Vertex = triangle.vertices [w];
-						var index:int = -1, unchanged:Boolean = (v.i > -1) && !v.f;
-						if (unchanged) {
-							// for now, simply duplicate vertices changed in some way
-							index = vertexIndicesMap [triangle.shared] [v.i];
-						}
-						if (index < 0) {
-							// create new vertex
-							index = mesh.vertices.length / 3;
-							mesh.vertices.push (v.x, v.y, v.z);
-							mesh.uvs.push (v.u, v.v);
-							mesh.vertexNormals.push (v.nx, v.ny, v.nz);
-							mesh.vertexTangents.push (v.tx, v.ty, v.tz);
-						}
-						mesh.indices.push (index);
-						if (unchanged) {
-							vertexIndicesMap [triangle.shared] [v.i] = index;
-						}
-					}
+			var seenPoly:Dictionary = new Dictionary (true);
+			var polygons:Vector.<Polygon> = new <Polygon> [], poly:Polygon;
+			var min:Vector3D = new Vector3D (+Number.MAX_VALUE, +Number.MAX_VALUE, +Number.MAX_VALUE);
+			var max:Vector3D = new Vector3D (-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE);
+			for each (poly in root.allPolygons ()) {
+				var source:Polygon = poly.merge ();
+				if (seenPoly [source] != true) {
+					seenPoly [source] = true;
+					source.updateBounds (min, max);
+					polygons.push (source);
 				}
 			}
+			
+			// precompute: to use foo / max.x instead of foo * base / (max.x - min.x)
+			var vertexHashBase:Number = 100;
+			max.decrementBy (min); max.scaleBy (1 / vertexHashBase);
+			
+			var i:int, j:int, k:int;
+			var mesh:MeshData = new MeshData ();
+			var vertex:Vertex;
+			var vertexCache:Object = {};
+			var vertices:Vector.<Vertex> = new <Vertex> [];
+			for each (poly in polygons) {
+				// vmap: maps poly.vertices to var vertices
+				var vmap:Vector.<int> = new Vector.<int> (poly.vertices.length, true);
+				for (i = 0; i < poly.vertices.length; i++) {
+					vertex = poly.vertices [i];
+					var vx:int = (vertex.x - min.x) / max.x;
+					var vy:int = (vertex.y - min.y) / max.y;
+					var vz:int = (vertex.z - min.z) / max.z;
+					var hash:int = vertexHashBase * (vertexHashBase * vx + vy) + vz;
+					var bucket:Vector.<int> = vertexCache [hash] as Vector.<int>;
+					if (bucket) {
+						var notFound:Boolean = true;
+						for (j = 0; j < bucket.length; j++) {
+							k = bucket [j];
+							if (vertices [k].equals (vertex)) {
+								notFound = false; vmap [i] = k; break;
+							}
+						}
+						if (notFound) {
+							k = vertices.length;
+							vmap [i] = k; vertices.push (vertex);
+							bucket.push (k);
+						}
+					} else {
+						k = vertices.length;
+						vmap [i] = k; vertices.push (vertex);
+						vertexCache [hash] = new <int> [k];
+					}
+				}
+				
+				var triangles:Vector.<Vector.<int>> = poly.triangulate ();
+				for each (var tri:Vector.<int> in triangles) {
+					mesh.indices.push (vmap [tri [0]], vmap [tri [1]], vmap [tri [2]]);
+				}
+			}
+			
+			mesh.vertices.length = 3 * vertices.length;
+			mesh.vertexNormals.length = mesh.vertices.length;
+			mesh.vertexTangents.length = mesh.vertices.length;
+			mesh.uvs.length = 2 * vertices.length;
+
+			for (i = 0; i < vertices.length; i++) {
+				vertex = vertices [i];
+				j = 3 * i;
+				mesh.vertices [j] = vertex.x;
+				mesh.vertexNormals [j] = vertex.nx;
+				mesh.vertexTangents [j] = vertex.tx;
+				j++;
+				mesh.vertices [j] = vertex.y;
+				mesh.vertexNormals [j] = vertex.ny;
+				mesh.vertexTangents [j] = vertex.ty;
+				j++;
+				mesh.vertices [j] = vertex.z;
+				mesh.vertexNormals [j] = vertex.nz;
+				mesh.vertexTangents [j] = vertex.tz;
+				j = 2 * i;
+				mesh.uvs [j] = vertex.u;
+				mesh.uvs [j + 1] = vertex.v;
+			}
+			
+			// after wasting memory generously I'm suddenly being paranoid
+			seenPoly = null; polygons.length = 0; vertices.length = 0; vertexCache = null;
+			
 			return mesh;
 		}
 
@@ -86,22 +136,14 @@ package com.ideaskill.primitives.csg {
 		 */
 		public function CSG (mesh:MeshData) {
 			if (mesh == null) return;
-			vlen = new <int> [mesh.vertices.length / 3];
 			root = new Node;
-			root.build (meshToPolygons (mesh, 0));
+			root.build (meshToPolygons (mesh));
 		}
 
 		private function clone ():CSG {
 			var bsp:CSG = new CSG (null);
-			bsp.vlen = this.vlen.concat ();
 			bsp.root = this.root.clone ();
 			return bsp;
-		}
-
-		private function incMeshIdsBy (inc:int):void {
-			for each (var polygon:Polygon in root.allPolygons ()) {
-				polygon.shared += inc;
-			}
 		}
 
 		/**
@@ -110,8 +152,6 @@ package com.ideaskill.primitives.csg {
 		 */
 		public function union (bsp:CSG):CSG {
 			var a:CSG = this.clone(), b:CSG = bsp.clone();
-			b.incMeshIdsBy (a.vlen.length);
-			a.vlen = a.vlen.concat (b.vlen);
 			a.root.clipTo(b.root);
 			b.root.clipTo(a.root);
 			b.root.invert();
@@ -127,8 +167,6 @@ package com.ideaskill.primitives.csg {
 		 */
 		public function subtract (bsp:CSG):CSG {
 			var a:CSG = this.clone(), b:CSG = bsp.clone();
-			b.incMeshIdsBy (a.vlen.length);
-			a.vlen = a.vlen.concat (b.vlen);
 			a.root.invert();
 			a.root.clipTo(b.root);
 			b.root.clipTo(a.root);
@@ -146,8 +184,6 @@ package com.ideaskill.primitives.csg {
 		 */
 		public function intersect (bsp:CSG):CSG {
 			var a:CSG = this.clone(), b:CSG = bsp.clone();
-			b.incMeshIdsBy (a.vlen.length);
-			a.vlen = a.vlen.concat (b.vlen);
 			a.root.invert();
 			b.root.clipTo(a.root);
 			b.root.invert();
@@ -174,11 +210,6 @@ package com.ideaskill.primitives.csg {
  * Represents a vertex of a polygon.
  */
 class Vertex {
-	/** Original index */
-	public var i:int = -1;
-	/** Flipped flag */
-	public var f:Boolean = false;
-
 	public var x:Number;
 	public var y:Number;
 	public var z:Number;
@@ -190,6 +221,22 @@ class Vertex {
 	public var tx:Number;
 	public var ty:Number;
 	public var tz:Number;
+	
+	public function equals (vertex:Vertex, e:Number = 1e-5):Boolean {
+		return (
+			(Math.abs (x - vertex.x) < e) &&
+			(Math.abs (y - vertex.y) < e) &&
+			(Math.abs (z - vertex.z) < e) &&
+			(Math.abs (u - vertex.u) < e) &&
+			(Math.abs (v - vertex.v) < e) &&
+			(Math.abs (nx - vertex.nx) < e) &&
+			(Math.abs (ny - vertex.ny) < e) &&
+			(Math.abs (nz - vertex.nz) < e) &&
+			(Math.abs (tx - vertex.tx) < e) &&
+			(Math.abs (ty - vertex.ty) < e) &&
+			(Math.abs (tz - vertex.tz) < e)
+		);
+	}
 
 	public function interpolate (other:Vertex, t:Number):Vertex {
 		var v:Vertex = new Vertex;
@@ -217,7 +264,6 @@ class Vertex {
 	
 	public function clone ():Vertex {
 		var c:Vertex = new Vertex;
-		c.i = i; c.f = f;
 		c.x = x; c.y = y; c.z = z;
 		c.u = u; c.v = v;
 		c.nx = nx; c.ny = ny; c.nz = nz;
@@ -227,7 +273,6 @@ class Vertex {
 	
 	public function flip ():Vertex {
 		var c:Vertex = clone ();
-		c.f = !f;
 		c.nx = -nx; c.ny = -ny; c.nz = -nz;
 		c.tx = -tx; c.ty = -ty; c.tz = -tz;
 		return c;
@@ -414,8 +459,8 @@ class Plane extends Vector3D {
 						b.push (v.clone());
 					}
 				}
-				if (f.length >= 3) front.push (new Polygon (f, polygon.shared));
-				if (b.length >= 3) back.push (new Polygon (b, polygon.shared));
+				if (f.length >= 3) front.push (new Polygon (f, polygon));
+				if (b.length >= 3) back.push (new Polygon (b, polygon));
 				break;
 		}
 	}
@@ -425,21 +470,69 @@ class Plane extends Vector3D {
  * Represents a convex polygon.
  */
 class Polygon {
+	private var source:Polygon;
+	private var a:Polygon;
+	private var b:Polygon;
+	
+	public function dispose ():void {
+		if (source) {
+			var ref:Polygon = source;
+			if (ref.a) {
+				ref.a.source = null; ref.a = null;
+			}
+			if (ref.b) {
+				ref.b.source = null; ref.b = null;
+			}
+		}
+		
+		vertices.length = 0; vertices = null;
+		plane = null;
+	}
+	
+	public function merge ():Polygon {
+		/* does not work :(
+		   TODO find out what's wrong with this
+		if (source && source.a && source.b) {
+			return source.merge ();
+		}
+		*/
+		return this;
+	}
+
 	public var vertices:Vector.<Vertex>;
-	public var shared:int;
 	public var plane:Plane;
 
-	public function Polygon (vertices:Vector.<Vertex>, shared:int) {
+	public function Polygon (vertices:Vector.<Vertex>, source:Polygon = null) {
 		this.vertices = vertices;
-		this.shared = shared;
+		
+		if (source) {
+			this.source = source;
+			if (source.a) {
+				source.b = this;
+			} else {
+				source.a = this;
+			}
+		}
+		
 		this.plane = Plane.fromPoints (vertices[0], vertices[1], vertices[2]);
+	}
+	
+	public function updateBounds (min:Vector3D, max:Vector3D):void {
+		for each (var v:Vertex in vertices) {
+			if (v.x < min.x) min.x = v.x;
+			if (v.y < min.y) min.y = v.y;
+			if (v.z < min.z) min.z = v.z;
+			if (v.x > max.x) max.x = v.x;
+			if (v.y > max.y) max.y = v.y;
+			if (v.z > max.z) max.z = v.z;
+		}
 	}
 	
 	public function clone ():Polygon {
 		var n:int = vertices.length;
 		var v2:Vector.<Vertex> = new Vector.<Vertex> (n);
 		for (var i:int = 0; i < n; i++) v2 [i] = vertices [i].clone ();
-		return new Polygon (v2, shared);
+		return new Polygon (v2);
 	}
 
 	public function flip ():void {
@@ -452,32 +545,20 @@ class Polygon {
 		plane.flip ();
 	}
 
-	public function triangulate ():Vector.<Polygon> {
-		var polygons:Vector.<Polygon> = new <Polygon> [];
+	public function triangulate ():Vector.<Vector.<int>> {
+		var polygons:Vector.<Vector.<int>> = new <Vector.<int>> [];
 		var i:int = 0, j:int = vertices.length - 1, done:Boolean;
 		do {
 			i++;
 			if (i < j) {
-				polygons.push (new Polygon (
-					new <Vertex> [
-						vertices [i - 1],
-						vertices [i],
-						vertices [j]
-					], shared
-				));
+				polygons.push (new <int> [i - 1, i, j]);
 			} else {
 				done = true;
 			}
 
 			j--;
 			if (i < j) {
-				polygons.push (new Polygon (
-					new <Vertex> [
-						vertices [j],
-						vertices [j + 1],
-						vertices [i]
-					], shared
-				));
+				polygons.push (new <int> [j, j + 1, i]);
 			} else {
 				done = true;
 			}
@@ -502,14 +583,14 @@ class Node {
 
 	public function clone ():Node {
 		var node:Node = new Node ();
-		if (this.plane) node.plane = this.plane.clone () as Plane;
-		if (this.front) node.front = this.front.clone ();
-		if (this.back)  node.back  = this.back.clone ();
-
-		var n:int = polygons.length;
-		node.polygons = new Vector.<Polygon> (n);
-		for (var i:int = 0; i < n; i++) node.polygons [i] = this.polygons [i].clone ();
-
+		
+		// short version of https://github.com/evanw/csg.js/commit/f76b8ef16c817fd80092955fed7bcddf4a2df5d1 fix
+		var polys:Vector.<Polygon> = allPolygons ();
+		for (var i:int = 0; i < polys.length; i++) {
+			polys [i] = polys [i].clone ();
+		}
+		node.build (polys);
+		
 		return node;
 	}
 
@@ -529,9 +610,10 @@ class Node {
 	}
 
 	/**
-	 * Recursively remove all polys in polygons that are inside this BSP tree.
+	 * Recursively remove all polys in polygons vector that are inside this BSP tree.
 	 */
 	public function clipPolygons (polygons:Vector.<Polygon>):Vector.<Polygon> {
+		if (!this.plane) return polygons.slice();
 		var front:Vector.<Polygon> = new <Polygon> [],
 			back:Vector.<Polygon> = new <Polygon> [];
 		for (var i:int = 0; i < polygons.length; i++) {
@@ -539,7 +621,12 @@ class Node {
 		}
 		if (this.front) front = this.front.clipPolygons (front);
 		if (this.back) back = this.back.clipPolygons (back);
-		else back = new <Polygon> [];
+		else {
+			for (i = 0; i < back.length; i++) {
+				back [i].dispose ();
+			}
+			back.length = 0;
+		}
 		return front.concat (back);
 	}
 
