@@ -1,7 +1,6 @@
 package com.ideaskill.primitives.csg {
 	import com.ideaskill.primitives.MeshData;
 	import flash.geom.Vector3D;
-	import flash.utils.Dictionary;
 	/**
 	 * Constructive Solid Geometry (CSG).
 	 * 
@@ -43,17 +42,11 @@ package com.ideaskill.primitives.csg {
 		}
 
 		public function toMesh ():MeshData {
-			var seenPoly:Dictionary = new Dictionary (true);
-			var polygons:Vector.<Polygon> = new <Polygon> [], poly:Polygon;
+			var polygons:Vector.<Polygon> = root.allPolygons (true), poly:Polygon;
 			var min:Vector3D = new Vector3D (+Number.MAX_VALUE, +Number.MAX_VALUE, +Number.MAX_VALUE);
 			var max:Vector3D = new Vector3D (-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE);
-			for each (poly in root.allPolygons ()) {
-				var source:Polygon = poly.merge ();
-				if (seenPoly [source] != true) {
-					seenPoly [source] = true;
-					source.updateBounds (min, max);
-					polygons.push (source);
-				}
+			for each (poly in polygons) {
+				poly.updateBounds (min, max);
 			}
 			
 			// precompute: to use foo / max.x instead of foo * base / (max.x - min.x)
@@ -126,7 +119,7 @@ package com.ideaskill.primitives.csg {
 			}
 			
 			// after wasting memory generously I'm suddenly being paranoid
-			seenPoly = null; polygons.length = 0; vertices.length = 0; vertexCache = null;
+			polygons.length = 0; vertices.length = 0; vertexCache = null;
 			
 			return mesh;
 		}
@@ -473,6 +466,7 @@ class Polygon {
 	private var source:Polygon;
 	private var a:Polygon;
 	private var b:Polygon;
+	private var flipped:Boolean;
 	
 	public function dispose ():void {
 		if (source) {
@@ -490,12 +484,10 @@ class Polygon {
 	}
 	
 	public function merge ():Polygon {
-		/* does not work :(
-		   TODO find out what's wrong with this
-		if (source && source.a && source.b) {
+		if (source && source.a && source.b &&
+			(source.flipped == source.a.flipped) && (source.flipped == source.b.flipped)) {
 			return source.merge ();
 		}
-		*/
 		return this;
 	}
 
@@ -507,6 +499,7 @@ class Polygon {
 		
 		if (source) {
 			this.source = source;
+			this.flipped = source.flipped;
 			if (source.a) {
 				source.b = this;
 			} else {
@@ -543,6 +536,8 @@ class Polygon {
 		}
 		vertices = v2;
 		plane.flip ();
+		
+		flipped = !flipped;
 	}
 
 	public function triangulate ():Vector.<Vector.<int>> {
@@ -567,6 +562,7 @@ class Polygon {
 	}
 }
 
+import flash.utils.Dictionary;
 
 /**
  * Holds a node in a BSP tree. A BSP tree is built from a collection of polygons
@@ -585,7 +581,7 @@ class Node {
 		var node:Node = new Node ();
 		
 		// short version of https://github.com/evanw/csg.js/commit/f76b8ef16c817fd80092955fed7bcddf4a2df5d1 fix
-		var polys:Vector.<Polygon> = allPolygons ();
+		var polys:Vector.<Polygon> = allPolygons (true);
 		for (var i:int = 0; i < polys.length; i++) {
 			polys [i] = polys [i].clone ();
 		}
@@ -642,8 +638,25 @@ class Node {
 	/**
 	 * Return a list of all polygons in this BSP tree.
 	 */
-	public function allPolygons ():Vector.<Polygon> {
-		var polygons:Vector.<Polygon> = this.polygons.slice ();
+	public function allPolygons (merge:Boolean = false):Vector.<Polygon> {
+		var polygons:Vector.<Polygon>;
+		
+		if (merge) {
+			var seenPoly:Dictionary = new Dictionary (true);
+
+			polygons = new <Polygon> [];
+			for each (var poly:Polygon in allPolygons ()) {
+				var source:Polygon = poly.merge ();
+				if (seenPoly [source] != true) {
+					seenPoly [source] = true;
+					polygons.push (source);
+				}
+			}
+
+			return polygons;
+		}
+		
+		polygons = this.polygons.slice ();
 		if (this.front) polygons = polygons.concat (this.front.allPolygons ());
 		if (this.back) polygons = polygons.concat (this.back.allPolygons ());
 		return polygons;
