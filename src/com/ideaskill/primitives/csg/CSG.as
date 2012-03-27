@@ -484,10 +484,11 @@ class Polygon {
 	}
 	
 	public function merge ():Polygon {
+		/* fuck, it's broken again TODO think
 		if (source && source.a && source.b &&
 			(source.flipped == source.a.flipped) && (source.flipped == source.b.flipped)) {
 			return source.merge ();
-		}
+		}*/
 		return this;
 	}
 
